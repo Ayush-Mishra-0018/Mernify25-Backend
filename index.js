@@ -3,6 +3,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 let express = require("express");
 let cors = require("cors");
+require("./auth/passport");
 let methodOverride = require("method-override");
 const compression = require("compression");
 let ExpressError = require("./utils/ExpressError");
@@ -31,6 +32,9 @@ db.once("open", function () {
 const port = process.env.BACKEND_PORT || 5000;
 
 let userRoutes = require("./routes/user");
+let authRoutes = require("./routes/auth");
+
+app.use("/auth", authRoutes);
 
 app.use("/user", userRoutes);
 
