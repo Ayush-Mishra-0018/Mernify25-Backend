@@ -35,6 +35,7 @@ module.exports.createCommunityDrive = async (req, res, next) => {
       timeTo: value.timeTo,
       upperLimit: value.upperLimit,
     });
+    drive.participants.push(user._id); // Creator joins by default
 
     await drive.save();
 
@@ -74,6 +75,17 @@ module.exports.getUserCommunityDrives = async (req, res, next) => {
     // 📦 Fetch drives
     const drives = await CommunityDrive.find(query)
       .sort({ eventDate: -1 });
+
+    const updatePromises = drives.map(async (drive) => {
+      if (drive.status === "active" && drive.timeTo < now) {
+        drive.status = "completed";
+        await drive.save(); // persist the change
+      }
+      return drive;
+    });
+
+    // Wait for all updates
+    drives = await Promise.all(updatePromises);
 
     res.status(200).json({
       success: true,
@@ -223,6 +235,17 @@ module.exports.getAllCommunityDrives = async (req, res, next) => {
     const drives = await CommunityDrive.find(query)
       .populate("createdBy", "name email")
       .sort({ eventDate: -1 });
+
+    const updatePromises = drives
+      .filter(drive => drive.status === "active" && drive.timeTo < now)
+      .map(async (drive) => {
+        drive.status = "completed";
+        await drive.save(); // trigger schema middleware + update DB
+        return drive;
+      });
+
+    // Wait for updates to complete
+    await Promise.all(updatePromises);
 
     res.status(200).json({
       success: true,
