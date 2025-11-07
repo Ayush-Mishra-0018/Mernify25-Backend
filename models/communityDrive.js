@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const communityDriveSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   heading: { type: String, required: true },
@@ -20,7 +22,6 @@ const communityDriveSchema = new mongoose.Schema({
   },
 
   cancellationReason: { type: String },
-
 }, { timestamps: true });
 
 // Auto mark as completed when current time > event time

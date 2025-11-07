@@ -1,11 +1,16 @@
-let express = require("express");
-let router = express.Router();
+const express = require("express");
+const router = express.Router();
+const wrapForError = require("../utils/catchAsync");
+const { createCommunityDrive } = require("../controller/user");
+const { getOngoingCommunityDrives } = require("../controller/user");
 
-let wrapForError = require("../utils/catchAsync");
-let UserMethods = require("../controller/user");
-let middleware = require("../middleware");
+// POST: /user/community-drive
+router.post("/community-drive", wrapForError(createCommunityDrive));
 
-router.get("/hello",wrapForError(UserMethods.helloUser));
+
+
+// GET: /user/community-drives/ongoing
+router.get("/community-drives/ongoing", wrapForError(getOngoingCommunityDrives));
 
 
 module.exports = router;
