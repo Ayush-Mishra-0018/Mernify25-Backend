@@ -8,7 +8,24 @@ let methodOverride = require("method-override");
 const compression = require("compression");
 let ExpressError = require("./utils/ExpressError");
 let mongoose = require("mongoose");
+const http = require("http");
+const { Server } = require("socket.io");
+
 let app = express();
+const server = http.createServer(app);
+
+// Initialize Socket.IO
+const io = new Server(server, {
+  cors: {
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
+    methods: ["GET", "POST"]
+  }
+});
+
+// Make io accessible to routes
+app.set('io', io);
+
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(compression());
 app.use(express.json({ limit: "50mb" }));
@@ -41,6 +58,14 @@ app.use("/auth", authRoutes);
 
 app.use("/user", userRoutes);
 
+// Socket.IO connection handling
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+  });
+});
 
 app.all("*", (req, res, next) => {
   // print the requested URL
@@ -60,6 +85,6 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message });
 });
 
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server is running on port: ${port}`);
 });

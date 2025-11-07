@@ -37,6 +37,15 @@ module.exports.createCommunityDrive = async (req, res, next) => {
 
     await drive.save();
 
+    // Populate creator info before emitting
+    await drive.populate("createdBy", "name email");
+
+    // Emit socket event for new drive created
+    const io = req.app.get('io');
+    if (io) {
+      io.emit("driveCreated", drive);
+    }
+
     return res.status(201).json({
       success: true,
       message: "Community drive created successfully.",
@@ -115,6 +124,16 @@ module.exports.joinCommunityDrive = async (req, res, next) => {
     drive.participants.push(userId);
     await drive.save();
 
+    // Emit socket event for drive update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit("driveUpdated", {
+        driveId: drive._id,
+        participantsCount: drive.participants.length,
+        action: "joined"
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: "Successfully joined the drive.",
@@ -162,6 +181,15 @@ module.exports.cancelCommunityDrive = async (req, res, next) => {
     }
 
     await drive.save();
+
+    // Populate creator info before emitting
+    await drive.populate("createdBy", "name email");
+
+    // Emit socket event for drive cancellation
+    const io = req.app.get('io');
+    if (io) {
+      io.emit("driveCancelled", drive);
+    }
 
     res.status(200).json({
       success: true,
@@ -241,6 +269,16 @@ module.exports.leaveCommunityDrive = async (req, res, next) => {
     );
 
     await drive.save();
+
+    // Emit socket event for drive update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit("driveUpdated", {
+        driveId: drive._id,
+        participantsCount: drive.participants.length,
+        action: "left"
+      });
+    }
 
     res.status(200).json({
       success: true,
