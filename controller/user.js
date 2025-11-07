@@ -203,3 +203,72 @@ module.exports.getAllCommunityDrives = async (req, res, next) => {
   }
 };
 
+
+module.exports.leaveCommunityDrive = async (req, res, next) => {
+  try {
+    const userId = req.user.mongoId;
+    const { driveId } = req.params;
+
+    const drive = await CommunityDrive.findById(driveId);
+    if (!drive) throw new ExpressError("Community Drive not found", 404);
+
+    const now = new Date();
+
+    // ❌ If drive is already completed or cancelled
+    if (drive.status === "cancelled" || drive.timeTo < now) {
+      throw new ExpressError("Cannot leave a cancelled or completed drive", 400);
+    }
+
+    // ❌ If the drive has already started (now >= timeFrom)
+    if (now >= drive.timeFrom) {
+      throw new ExpressError("You cannot leave a drive that has already started", 400);
+    }
+
+    // ❌ If user not in participants list
+    const isParticipant = drive.participants.some(
+      (id) => id.toString() === userId.toString()
+    );
+    if (!isParticipant) {
+      throw new ExpressError("You are not a participant in this drive", 400);
+    }
+
+    // ✅ Remove user from participants
+    drive.participants = drive.participants.filter(
+      (id) => id.toString() !== userId.toString()
+    );
+
+    await drive.save();
+
+    res.status(200).json({
+      success: true,
+      message: "You have successfully left the community drive",
+      participantsCount: drive.participants.length,
+    });
+  } catch (err) {
+    console.error("❌ Error leaving community drive:", err);
+    next(err);
+  }
+};
+
+module.exports.getCommunityDriveDetails = async (req, res, next) => {
+  try {
+    const { driveId } = req.params;
+
+    // 🔍 Fetch the drive with participant + creator details
+    const drive = await CommunityDrive.findById(driveId)
+      .populate("createdBy", "name email")
+      .populate("participants", "name email");
+
+    if (!drive) throw new ExpressError("Community Drive not found", 404);
+
+    res.status(200).json({
+      success: true,
+      drive,
+      participantsCount: drive.participants.length,
+      participants: drive.participants, // optional explicit field
+    });
+  } catch (err) {
+    console.error("❌ Error fetching community drive details:", err);
+    next(err);
+  }
+};

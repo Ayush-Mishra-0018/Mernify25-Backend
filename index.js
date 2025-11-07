@@ -33,6 +33,9 @@ const port = process.env.BACKEND_PORT || 5000;
 
 let userRoutes = require("./routes/user");
 let authRoutes = require("./routes/auth");
+let notLoggedRoutes = require("./routes/notLogged");
+
+app.use("/notLogged", notLoggedRoutes);
 
 app.use("/auth", authRoutes);
 
