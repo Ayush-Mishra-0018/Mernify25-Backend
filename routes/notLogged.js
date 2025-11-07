@@ -11,4 +11,6 @@ router.get(
 
 router.get("/driveDetails/:driveId", wrapForError(nonLoggedController.getCommunityDriveDetails));
 
+router.get("/initiativeStats", wrapForError(nonLoggedController.getInitiativeStats));
+
 module.exports = router;

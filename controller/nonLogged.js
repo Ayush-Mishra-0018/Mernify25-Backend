@@ -56,3 +56,48 @@ module.exports.getCommunityDriveDetails = async (req, res, next) => {
     next(err);
   }
 };
+
+module.exports.getInitiativeStats = async (req, res, next) => {
+  try {
+    // First, update any initiatives that should be completed but aren't marked as such
+    const now = new Date();
+    const updateResult = await CommunityDrive.updateMany(
+      { 
+        status: "active", 
+        timeTo: { $lt: now } 
+      },
+      { 
+        $set: { status: "completed" } 
+      }
+    );
+    
+    console.log(`🔄 Updated ${updateResult.modifiedCount} initiatives to completed status`);
+    
+    // Get total count of all initiatives
+    const totalInitiatives = await CommunityDrive.countDocuments();
+    
+    // Get count of completed initiatives
+    const completedInitiatives = await CommunityDrive.countDocuments({ status: "completed" });
+    
+    // Get count of active initiatives
+    const activeInitiatives = await CommunityDrive.countDocuments({ status: "active" });
+    
+    console.log("📊 Initiative Stats:", {
+      total: totalInitiatives,
+      completed: completedInitiatives,
+      active: activeInitiatives
+    });
+    
+    res.status(200).json({
+      success: true,
+      stats: {
+        total: totalInitiatives,
+        completed: completedInitiatives,
+        active: activeInitiatives,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Error fetching initiative stats:", err);
+    next(err);
+  }
+};
