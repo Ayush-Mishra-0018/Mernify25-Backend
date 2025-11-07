@@ -16,4 +16,8 @@ router.get("/myDrive", wrapForError(UserController.getUserCommunityDrives));
 
 router.put("/joinDrive/:driveId", wrapForError(UserController.joinCommunityDrive));
 
+router.put("/cancelDrive/:driveId", wrapForError(UserController.cancelCommunityDrive));
+
+router.get("allDrives", wrapForError(UserController.getAllCommunityDrives));
+
 module.exports = router;
