@@ -14,4 +14,6 @@ router.post(
 
 router.get("/myDrive", wrapForError(UserController.getUserCommunityDrives));
 
+router.put("/joinDrive/:driveId", wrapForError(UserController.joinCommunityDrive));
+
 module.exports = router;

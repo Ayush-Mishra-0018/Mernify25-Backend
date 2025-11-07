@@ -54,19 +54,13 @@ module.exports.getUserCommunityDrives = async (req, res, next) => {
 
     let query = { createdBy: userId };
 
-    // 🕒 Apply filters based on query param
     if (filter === "completed") {
-      // Drives whose timeTo is in the past
       query.timeTo = { $lt: now };
     } else if (filter === "active") {
-      // Drives whose timeFrom <= now <= timeTo
       query.timeTo = { $gte: now };
     }
-    // else → no filter (get all drives created by this user)
 
-    // 🧩 Fetch drives and populate createdBy (basic info)
     const drives = await CommunityDrive.find(query)
-      .populate("createdBy", "name email role")
       .sort({ eventDate: -1 });
 
     res.status(200).json({
@@ -76,6 +70,55 @@ module.exports.getUserCommunityDrives = async (req, res, next) => {
     });
   } catch (err) {
     console.error("❌ Error fetching user community drives:", err);
+    next(err);
+  }
+};
+
+
+
+module.exports.joinCommunityDrive = async (req, res, next) => {
+  try {
+    const userId = req.user.mongoId;
+    const { driveId } = req.params; // from URL param
+    const now = new Date();
+
+    // ✅ Find the drive
+    const drive = await CommunityDrive.findById(driveId);
+    if (!drive) {
+      throw new ExpressError("Drive not found.", 404);
+    }
+
+    // ✅ Check drive status
+    if (drive.status !== "active") {
+      throw new ExpressError("You can only join active drives.", 400);
+    }
+
+    // ✅ Check event timing
+    if (now >= drive.timeFrom) {
+      throw new ExpressError("You cannot join after the event has started.", 400);
+    }
+
+    // ✅ Check if user already joined
+    if (drive.participants.includes(userId)) {
+      throw new ExpressError("You have already joined this drive.", 400);
+    }
+
+    // ✅ Check upper limit
+    if (drive.participants.length >= drive.upperLimit) {
+      throw new ExpressError("This drive has reached its participant limit.", 400);
+    }
+
+    // ✅ Add participant
+    drive.participants.push(userId);
+    await drive.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Successfully joined the drive.",
+      participantsCount: drive.participants.length,
+    });
+  } catch (err) {
+    console.error("❌ Error joining community drive:", err);
     next(err);
   }
 };
