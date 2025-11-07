@@ -23,4 +23,10 @@ router.get("/allDrives", wrapForError(UserController.getAllCommunityDrives));
 router.post("/leaveDrive/:driveId", wrapForError(UserController.leaveCommunityDrive));
 
 router.get("/driveDetails/:driveId", wrapForError(UserController.getCommunityDriveDetails));
+
+// Chat routes
+router.get("/driveChat/:driveId", wrapForError(UserController.getDriveMessages));
+
+router.post("/driveChat/:driveId", wrapForError(UserController.sendDriveMessage));
+
 module.exports = router;

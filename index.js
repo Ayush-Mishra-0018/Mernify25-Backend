@@ -62,6 +62,27 @@ app.use("/user", userRoutes);
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
+  // Join a drive chat room
+  socket.on("joinDriveRoom", (driveId) => {
+    socket.join(`drive-${driveId}`);
+    console.log(`Socket ${socket.id} joined drive room: drive-${driveId}`);
+  });
+
+  // Leave a drive chat room
+  socket.on("leaveDriveRoom", (driveId) => {
+    socket.leave(`drive-${driveId}`);
+    console.log(`Socket ${socket.id} left drive room: drive-${driveId}`);
+  });
+
+  // Handle typing indicator
+  socket.on("typing", ({ driveId, userName }) => {
+    socket.to(`drive-${driveId}`).emit("userTyping", { userName });
+  });
+
+  socket.on("stopTyping", ({ driveId }) => {
+    socket.to(`drive-${driveId}`).emit("userStoppedTyping");
+  });
+
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
   });

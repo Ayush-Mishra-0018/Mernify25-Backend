@@ -1,4 +1,5 @@
 const CommunityDrive = require("../models/CommunityDrive");
+const CommunityChat = require("../models/communityDriveChat");
 const User = require("../models/User");
 const ExpressError = require("../utils/ExpressError");
 
@@ -310,6 +311,128 @@ module.exports.getCommunityDriveDetails = async (req, res, next) => {
     });
   } catch (err) {
     console.error("❌ Error fetching community drive details:", err);
+    next(err);
+  }
+};
+
+// Get all messages for a specific drive
+module.exports.getDriveMessages = async (req, res, next) => {
+  try {
+    const { driveId } = req.params;
+    const userId = req.user.id;
+
+    // Check if drive exists
+    const drive = await CommunityDrive.findById(driveId);
+    if (!drive) {
+      throw new ExpressError("Community Drive not found", 404);
+    }
+
+    // Check if user is part of the drive (either organizer or participant)
+    const isOrganizer = drive.createdBy.toString() === userId;
+    const isParticipant = drive.participants.includes(userId);
+
+    if (!isOrganizer && !isParticipant) {
+      throw new ExpressError("You must be part of this drive to access the chat", 403);
+    }
+
+    // Fetch all messages for this drive
+    const messages = await CommunityChat.find({ communityDrive: driveId })
+      .populate("sender", "name email")
+      .sort({ timestamp: 1 });
+
+    // Get all participants info (organizer + participants)
+    const allParticipants = await User.find({
+      _id: { $in: [drive.createdBy, ...drive.participants] }
+    }).select("name email");
+
+    res.status(200).json({
+      success: true,
+      messages: messages.map(msg => ({
+        _id: msg._id,
+        message: msg.message,
+        timestamp: msg.timestamp,
+        sender: {
+          _id: msg.sender._id,
+          name: msg.sender.name,
+          email: msg.sender.email
+        }
+      })),
+      participants: allParticipants,
+      currentUserId: userId
+    });
+  } catch (err) {
+    console.error("❌ Error fetching drive messages:", err);
+    next(err);
+  }
+};
+
+// Send a message to a drive chat
+module.exports.sendDriveMessage = async (req, res, next) => {
+  try {
+    const { driveId } = req.params;
+    const { message } = req.body;
+    const userId = req.user.id;
+
+    if (!message || message.trim() === "") {
+      throw new ExpressError("Message cannot be empty", 400);
+    }
+
+    // Check if drive exists
+    const drive = await CommunityDrive.findById(driveId);
+    if (!drive) {
+      throw new ExpressError("Community Drive not found", 404);
+    }
+
+    // Check if user is part of the drive
+    const isOrganizer = drive.createdBy.toString() === userId;
+    const isParticipant = drive.participants.includes(userId);
+
+    if (!isOrganizer && !isParticipant) {
+      throw new ExpressError("You must be part of this drive to send messages", 403);
+    }
+
+    // Create and save the message
+    const chatMessage = new CommunityChat({
+      communityDrive: driveId,
+      sender: userId,
+      message: message.trim(),
+      timestamp: new Date()
+    });
+
+    await chatMessage.save();
+    await chatMessage.populate("sender", "name email");
+
+    // Emit socket event for new message
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`drive-${driveId}`).emit("newMessage", {
+        _id: chatMessage._id,
+        message: chatMessage.message,
+        timestamp: chatMessage.timestamp,
+        sender: {
+          _id: chatMessage.sender._id,
+          name: chatMessage.sender.name,
+          email: chatMessage.sender.email
+        },
+        driveId: driveId
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: {
+        _id: chatMessage._id,
+        message: chatMessage.message,
+        timestamp: chatMessage.timestamp,
+        sender: {
+          _id: chatMessage.sender._id,
+          name: chatMessage.sender.name,
+          email: chatMessage.sender.email
+        }
+      }
+    });
+  } catch (err) {
+    console.error("❌ Error sending message:", err);
     next(err);
   }
 };
