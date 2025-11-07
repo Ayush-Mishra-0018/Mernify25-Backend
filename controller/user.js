@@ -58,7 +58,7 @@ module.exports.getUserCommunityDrives = async (req, res, next) => {
     if (filter === "completed") {
       // Drives whose timeTo is in the past
       query.timeTo = { $lt: now };
-    } else if (filter === "ongoing") {
+    } else if (filter === "active") {
       // Drives whose timeFrom <= now <= timeTo
       query.timeTo = { $gte: now };
     }
