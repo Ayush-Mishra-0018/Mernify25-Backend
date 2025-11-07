@@ -701,21 +701,13 @@ module.exports.finishImpactBoard = async (req, res, next) => {
       throw new ExpressError("Gemini API key not configured.", 500);
     }
 
-    const systemPrompt = `You are an expert summarizer for environmental and community initiatives. 
+    const systemPrompt = `You are a summarizer for environmental and community initiatives. 
     
     Below is a collaborative impact summary written by multiple participants of a community initiative titled "${drive.heading}":
     
     "${summaryText}"
     
-    Please analyze this summary and create a well-structured, professional final report that includes:
-    - Key achievements and impact
-    - Challenges faced and how they were overcome
-    - Community participation and engagement
-    - Environmental benefits
-    - Lessons learned
-    - Future recommendations
-    
-    Make it concise, inspiring, and professional. Use clear sections with headers. Keep it under 500 words.`;
+    Make it concise, inspiring, and professional. Ignore any gibberish remarks. Keep it under 100 words.`;
 
     const response = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
