@@ -73,9 +73,12 @@ module.exports.getUserCommunityDrives = async (req, res, next) => {
     }
 
     // 📦 Fetch drives
-    const drives = await CommunityDrive.find(query)
-      .sort({ eventDate: -1 });
+    let drives = await CommunityDrive.find(query).sort({ eventDate: -1 });
 
+    // 🕒 Current time
+    const now = new Date();
+
+    // ⚙️ Update drives whose time has passed
     const updatePromises = drives.map(async (drive) => {
       if (drive.status === "active" && drive.timeTo < now) {
         drive.status = "completed";
@@ -215,7 +218,6 @@ module.exports.cancelCommunityDrive = async (req, res, next) => {
   }
 };
 
-
 module.exports.getAllCommunityDrives = async (req, res, next) => {
   try {
     const { status } = req.query; // e.g., ?status=active
@@ -232,19 +234,22 @@ module.exports.getAllCommunityDrives = async (req, res, next) => {
     }
 
     // ✅ Fetch all drives
-    const drives = await CommunityDrive.find(query)
+    let drives = await CommunityDrive.find(query)
       .populate("createdBy", "name email")
       .sort({ eventDate: -1 });
 
+    // 🕒 Current time
+    const now = new Date();
+
+    // ⚙️ Update expired active drives
     const updatePromises = drives
       .filter(drive => drive.status === "active" && drive.timeTo < now)
       .map(async (drive) => {
         drive.status = "completed";
-        await drive.save(); // trigger schema middleware + update DB
+        await drive.save();
         return drive;
       });
 
-    // Wait for updates to complete
     await Promise.all(updatePromises);
 
     res.status(200).json({
@@ -257,8 +262,6 @@ module.exports.getAllCommunityDrives = async (req, res, next) => {
     next(err);
   }
 };
-
-
 module.exports.leaveCommunityDrive = async (req, res, next) => {
   try {
     const userId = req.user.id;
