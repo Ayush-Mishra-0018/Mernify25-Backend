@@ -29,4 +29,9 @@ router.get("/driveChat/:driveId", wrapForError(UserController.getDriveMessages))
 
 router.post("/driveChat/:driveId", wrapForError(UserController.sendDriveMessage));
 
+// Impact Board routes
+router.get("/impactBoard/:driveId", wrapForError(UserController.getImpactBoardData));
+
+router.put("/impactBoard/:driveId", wrapForError(UserController.updateImpactBoardData));
+
 module.exports = router;

@@ -83,8 +83,94 @@ io.on("connection", (socket) => {
     socket.to(`drive-${driveId}`).emit("userStoppedTyping");
   });
 
+  // Impact Board room management
+  socket.on("joinImpactBoard", ({ driveId, userId, userName }) => {
+    socket.join(`impact-${driveId}`);
+    socket.userId = userId;
+    socket.userName = userName;
+    console.log(`Socket ${socket.id} (${userName}) joined impact board: impact-${driveId}`);
+    
+    // Notify others that a user joined
+    socket.to(`impact-${driveId}`).emit("userJoinedImpactBoard", {
+      userId,
+      userName,
+      socketId: socket.id,
+    });
+
+    // Send list of active users in the room
+    const room = io.sockets.adapter.rooms.get(`impact-${driveId}`);
+    const activeUsers = [];
+    if (room) {
+      room.forEach(socketId => {
+        const clientSocket = io.sockets.sockets.get(socketId);
+        if (clientSocket && clientSocket.userId && clientSocket.userName) {
+          activeUsers.push({
+            userId: clientSocket.userId,
+            userName: clientSocket.userName,
+            socketId: socketId,
+          });
+        }
+      });
+    }
+    socket.emit("activeImpactUsers", activeUsers);
+  });
+
+  socket.on("leaveImpactBoard", ({ driveId, userId }) => {
+    socket.leave(`impact-${driveId}`);
+    console.log(`Socket ${socket.id} left impact board: impact-${driveId}`);
+    
+    // Notify others that a user left
+    socket.to(`impact-${driveId}`).emit("userLeftImpactBoard", {
+      userId,
+      socketId: socket.id,
+    });
+  });
+
+  // Impact Board field focus/blur for cursor tracking
+  socket.on("impactFieldFocus", ({ driveId, field, userId, userName, cursorPosition }) => {
+    socket.to(`impact-${driveId}`).emit("userFocusedField", {
+      field,
+      userId,
+      userName,
+      socketId: socket.id,
+      cursorPosition,
+    });
+  });
+
+  socket.on("impactFieldBlur", ({ driveId, field, userId }) => {
+    socket.to(`impact-${driveId}`).emit("userBlurredField", {
+      field,
+      userId,
+      socketId: socket.id,
+    });
+  });
+
+  // Real-time cursor position updates
+  socket.on("cursorPositionUpdate", ({ driveId, field, userId, userName, cursorPosition }) => {
+    socket.to(`impact-${driveId}`).emit("remoteCursorUpdate", {
+      field,
+      userId,
+      userName,
+      socketId: socket.id,
+      cursorPosition,
+    });
+  });
+
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
+    
+    // Notify impact board rooms about disconnection
+    if (socket.userId) {
+      const rooms = Array.from(socket.rooms);
+      rooms.forEach(room => {
+        if (room.startsWith("impact-")) {
+          socket.to(room).emit("userLeftImpactBoard", {
+            userId: socket.userId,
+            socketId: socket.id,
+          });
+        }
+      });
+    }
   });
 });
 

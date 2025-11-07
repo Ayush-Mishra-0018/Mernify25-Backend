@@ -540,3 +540,128 @@ module.exports.sendDriveMessage = async (req, res, next) => {
     next(err);
   }
 };
+
+// ============================================
+// Impact Board Methods
+// ============================================
+
+module.exports.getImpactBoardData = async (req, res, next) => {
+  try {
+    const { driveId } = req.params;
+    const userId = req.user.id;
+
+    // Find the drive
+    const drive = await CommunityDrive.findById(driveId)
+      .populate("createdBy", "name email")
+      .populate("participants", "name email");
+
+    if (!drive) {
+      throw new ExpressError("Drive not found.", 404);
+    }
+
+    // Check if user is organizer or participant
+    const isOrganizer = drive.createdBy._id.toString() === userId;
+    const isParticipant = drive.participants.some(
+      (p) => p._id.toString() === userId
+    );
+
+    if (!isOrganizer && !isParticipant) {
+      throw new ExpressError("You are not authorized to access this impact board.", 403);
+    }
+
+    // Return drive data with impact board info
+    res.status(200).json({
+      success: true,
+      drive: {
+        _id: drive._id,
+        heading: drive.heading,
+        description: drive.description,
+        eventDate: drive.eventDate,
+        status: drive.status,
+        participants: drive.participants,
+        impactData: drive.impactData || {
+          wasteCollected: "",
+          carbonOffset: "",
+          impactScore: "",
+          achievements: "",
+          summary: "",
+          photos: [],
+        },
+      },
+    });
+  } catch (err) {
+    console.error("❌ Error fetching impact board data:", err);
+    next(err);
+  }
+};
+
+module.exports.updateImpactBoardData = async (req, res, next) => {
+  try {
+    const { driveId } = req.params;
+    const userId = req.user.id;
+    const { field, value, cursorPosition } = req.body;
+
+    // Find the drive
+    const drive = await CommunityDrive.findById(driveId);
+
+    if (!drive) {
+      throw new ExpressError("Drive not found.", 404);
+    }
+
+    // Check if user is organizer or participant
+    const isOrganizer = drive.createdBy.toString() === userId;
+    const isParticipant = drive.participants.some(
+      (p) => p.toString() === userId
+    );
+
+    if (!isOrganizer && !isParticipant) {
+      throw new ExpressError("You are not authorized to edit this impact board.", 403);
+    }
+
+    // Update the specific field
+    if (!drive.impactData) {
+      drive.impactData = {
+        wasteCollected: "",
+        carbonOffset: "",
+        impactScore: "",
+        achievements: "",
+        summary: "",
+        photos: [],
+      };
+    }
+
+    if (field === "photos") {
+      // Handle photo array
+      drive.impactData.photos = value;
+    } else {
+      // Update text field
+      drive.impactData[field] = value;
+    }
+
+    await drive.save();
+
+    // Get user info for socket broadcast
+    const user = await User.findById(userId);
+
+    // Emit socket event to all users in the impact board room
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`impact-${driveId}`).emit("impactBoardUpdate", {
+        driveId,
+        field,
+        value,
+        cursorPosition,
+        userId,
+        userName: user.name,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      impactData: drive.impactData,
+    });
+  } catch (err) {
+    console.error("❌ Error updating impact board:", err);
+    next(err);
+  }
+};

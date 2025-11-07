@@ -15,6 +15,11 @@ const communityDriveSchema = new mongoose.Schema({
 
   result: { type: String }, // summary after completion
 
+  // Collaborative Impact Board data
+  impactData: {
+    summary: { type: String, default: "" }, // Collaborative impact summary
+  },
+
   status: {
     type: String,
     enum: ["active", "cancelled", "completed"],
