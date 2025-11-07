@@ -2,6 +2,7 @@ const CommunityDrive = require("../models/CommunityDrive");
 const CommunityChat = require("../models/communityDriveChat");
 const User = require("../models/User");
 const ExpressError = require("../utils/ExpressError");
+let redis = require("../utils/redis");
 
 
 
@@ -341,50 +342,79 @@ module.exports.getCommunityDriveDetails = async (req, res, next) => {
   }
 };
 
-// Get all messages for a specific drive
+// ---------------- GET CHAT MESSAGES ----------------
 module.exports.getDriveMessages = async (req, res, next) => {
   try {
     const { driveId } = req.params;
     const userId = req.user.id;
 
-    // Check if drive exists
-    const drive = await CommunityDrive.findById(driveId);
-    if (!drive) {
-      throw new ExpressError("Community Drive not found", 404);
-    }
+    console.log(`📩 Fetching chat messages for drive: ${driveId} by user: ${userId}`);
 
-    // Check if user is part of the drive (either organizer or participant)
+    // 1️⃣ Check if drive exists
+    const drive = await CommunityDrive.findById(driveId);
+    if (!drive) throw new ExpressError("Community Drive not found", 404);
+
+    // 2️⃣ Verify membership
     const isOrganizer = drive.createdBy.toString() === userId;
     const isParticipant = drive.participants.includes(userId);
-
-    if (!isOrganizer && !isParticipant) {
+    if (!isOrganizer && !isParticipant)
       throw new ExpressError("You must be part of this drive to access the chat", 403);
+
+    // 3️⃣ Try to get cached messages from Redis
+    const cachedMessages = await redis.get(`drive:${driveId}:messages`);
+    if (cachedMessages) {
+      console.log(`✅ [CACHE HIT] Messages fetched from Redis for drive ${driveId}`);
+      const messages = JSON.parse(cachedMessages);
+
+      const allParticipants = await User.find({
+        _id: { $in: [drive.createdBy, ...drive.participants] },
+      }).select("name email");
+
+      return res.status(200).json({
+        success: true,
+        messages,
+        participants: allParticipants,
+        currentUserId: userId,
+        cached: true,
+      });
     }
 
-    // Fetch all messages for this drive
+    // 4️⃣ Cache miss → fetch from MongoDB
+    console.log(`⚠️ [CACHE MISS] Fetching messages from MongoDB for drive ${driveId}`);
     const messages = await CommunityChat.find({ communityDrive: driveId })
       .populate("sender", "name email")
       .sort({ timestamp: 1 });
 
-    // Get all participants info (organizer + participants)
+    // 5️⃣ Cache the messages in Redis
+    await redis.set(
+      `drive:${driveId}:messages`,
+      JSON.stringify(
+        messages.map((msg) => ({
+          _id: msg._id,
+          message: msg.message,
+          timestamp: msg.timestamp,
+          sender: {
+            _id: msg.sender._id,
+            name: msg.sender.name,
+            email: msg.sender.email,
+          },
+        }))
+      ),
+      "EX",
+      60 * 5
+    );
+    console.log(`🧠 [CACHE SET] Stored ${messages.length} messages in Redis for drive ${driveId}`);
+
+    // 6️⃣ Get participants
     const allParticipants = await User.find({
-      _id: { $in: [drive.createdBy, ...drive.participants] }
+      _id: { $in: [drive.createdBy, ...drive.participants] },
     }).select("name email");
 
     res.status(200).json({
       success: true,
-      messages: messages.map(msg => ({
-        _id: msg._id,
-        message: msg.message,
-        timestamp: msg.timestamp,
-        sender: {
-          _id: msg.sender._id,
-          name: msg.sender.name,
-          email: msg.sender.email
-        }
-      })),
+      messages,
       participants: allParticipants,
-      currentUserId: userId
+      currentUserId: userId,
     });
   } catch (err) {
     console.error("❌ Error fetching drive messages:", err);
@@ -392,45 +422,40 @@ module.exports.getDriveMessages = async (req, res, next) => {
   }
 };
 
-// Send a message to a drive chat
+// ---------------- SEND CHAT MESSAGE ----------------
 module.exports.sendDriveMessage = async (req, res, next) => {
   try {
     const { driveId } = req.params;
     const { message } = req.body;
     const userId = req.user.id;
 
-    if (!message || message.trim() === "") {
-      throw new ExpressError("Message cannot be empty", 400);
-    }
+    console.log(`💬 Sending message in drive ${driveId} by user ${userId}: "${message}"`);
 
-    // Check if drive exists
+    if (!message?.trim()) throw new ExpressError("Message cannot be empty", 400);
+
     const drive = await CommunityDrive.findById(driveId);
-    if (!drive) {
-      throw new ExpressError("Community Drive not found", 404);
-    }
+    if (!drive) throw new ExpressError("Community Drive not found", 404);
 
-    // Check if user is part of the drive
     const isOrganizer = drive.createdBy.toString() === userId;
     const isParticipant = drive.participants.includes(userId);
-
-    if (!isOrganizer && !isParticipant) {
+    if (!isOrganizer && !isParticipant)
       throw new ExpressError("You must be part of this drive to send messages", 403);
-    }
 
-    // Create and save the message
+    // Create and save message
     const chatMessage = new CommunityChat({
       communityDrive: driveId,
       sender: userId,
       message: message.trim(),
-      timestamp: new Date()
+      timestamp: new Date(),
     });
 
     await chatMessage.save();
     await chatMessage.populate("sender", "name email");
 
-    // Emit socket event for new message
-    const io = req.app.get('io');
+    // Emit via socket.io
+    const io = req.app.get("io");
     if (io) {
+      console.log(`📢 [SOCKET EMIT] Broadcasting new message to room drive-${driveId}`);
       io.to(`drive-${driveId}`).emit("newMessage", {
         _id: chatMessage._id,
         message: chatMessage.message,
@@ -438,11 +463,64 @@ module.exports.sendDriveMessage = async (req, res, next) => {
         sender: {
           _id: chatMessage.sender._id,
           name: chatMessage.sender.name,
-          email: chatMessage.sender.email
+          email: chatMessage.sender.email,
         },
-        driveId: driveId
+        driveId,
       });
     }
+
+    // ✅ Update Redis cache instantly
+    const cachedMessages = await redis.get(`drive:${driveId}:messages`);
+    if (cachedMessages) {
+      const updatedMessages = JSON.parse(cachedMessages);
+      updatedMessages.push({
+        _id: chatMessage._id,
+        message: chatMessage.message,
+        timestamp: chatMessage.timestamp,
+        sender: {
+          _id: chatMessage.sender._id,
+          name: chatMessage.sender.name,
+          email: chatMessage.sender.email,
+        },
+      });
+      await redis.set(
+        `drive:${driveId}:messages`,
+        JSON.stringify(updatedMessages),
+        "EX",
+        60 * 5
+      );
+      console.log(`🧩 [CACHE UPDATE] Message appended to Redis cache for drive ${driveId}`);
+    } else {
+      console.log(`⚠️ [CACHE EMPTY] Creating new cache for drive ${driveId}`);
+      await redis.set(
+        `drive:${driveId}:messages`,
+        JSON.stringify([
+          {
+            _id: chatMessage._id,
+            message: chatMessage.message,
+            timestamp: chatMessage.timestamp,
+            sender: {
+              _id: chatMessage.sender._id,
+              name: chatMessage.sender.name,
+              email: chatMessage.sender.email,
+            },
+          },
+        ]),
+        "EX",
+        60 * 5
+      );
+    }
+
+    // ✅ Publish event (for multi-server scaling)
+    await redis.publish(
+      "chatMessages",
+      JSON.stringify({
+        driveId,
+        message: chatMessage.message,
+        sender: chatMessage.sender.name,
+      })
+    );
+    console.log(`📡 [REDIS PUBLISH] Message published on 'chatMessages' channel for drive ${driveId}`);
 
     res.status(201).json({
       success: true,
@@ -453,9 +531,9 @@ module.exports.sendDriveMessage = async (req, res, next) => {
         sender: {
           _id: chatMessage.sender._id,
           name: chatMessage.sender.name,
-          email: chatMessage.sender.email
-        }
-      }
+          email: chatMessage.sender.email,
+        },
+      },
     });
   } catch (err) {
     console.error("❌ Error sending message:", err);
