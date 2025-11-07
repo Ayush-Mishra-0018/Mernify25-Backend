@@ -578,15 +578,12 @@ module.exports.getImpactBoardData = async (req, res, next) => {
         description: drive.description,
         eventDate: drive.eventDate,
         status: drive.status,
+        createdBy: drive.createdBy,
         participants: drive.participants,
         impactData: drive.impactData || {
-          wasteCollected: "",
-          carbonOffset: "",
-          impactScore: "",
-          achievements: "",
           summary: "",
-          photos: [],
         },
+        isFinalized: !!drive.result, // Whether impact board has been finalized
       },
     });
   } catch (err) {
@@ -662,6 +659,143 @@ module.exports.updateImpactBoardData = async (req, res, next) => {
     });
   } catch (err) {
     console.error("❌ Error updating impact board:", err);
+    next(err);
+  }
+};
+
+module.exports.finishImpactBoard = async (req, res, next) => {
+  try {
+    const { driveId } = req.params;
+    const userId = req.user.id;
+
+    // Find the drive
+    const drive = await CommunityDrive.findById(driveId);
+
+    if (!drive) {
+      throw new ExpressError("Drive not found.", 404);
+    }
+
+    // Only creator can finish the impact board
+    const isOrganizer = drive.createdBy.toString() === userId;
+    if (!isOrganizer) {
+      throw new ExpressError("Only the organizer can finish the impact board.", 403);
+    }
+
+    // Check if already finished
+    if (drive.result) {
+      throw new ExpressError("Impact board already finalized.", 400);
+    }
+
+    // Get the summary from impactData
+    const summaryText = drive.impactData?.summary || "";
+    
+    if (!summaryText.trim()) {
+      throw new ExpressError("Cannot finalize an empty impact summary.", 400);
+    }
+
+    // Call Gemini API to generate meaningful summary
+    const axios = require('axios');
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+    if (!GEMINI_API_KEY) {
+      throw new ExpressError("Gemini API key not configured.", 500);
+    }
+
+    const systemPrompt = `You are an expert summarizer for environmental and community initiatives. 
+    
+    Below is a collaborative impact summary written by multiple participants of a community initiative titled "${drive.heading}":
+    
+    "${summaryText}"
+    
+    Please analyze this summary and create a well-structured, professional final report that includes:
+    - Key achievements and impact
+    - Challenges faced and how they were overcome
+    - Community participation and engagement
+    - Environmental benefits
+    - Lessons learned
+    - Future recommendations
+    
+    Make it concise, inspiring, and professional. Use clear sections with headers. Keep it under 500 words.`;
+
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        contents: [
+          {
+            parts: [{ text: systemPrompt }],
+          },
+        ],
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const geminiResult = response.data.candidates[0].content.parts[0].text.replace(/\*\*/g, "");
+
+    // Store the result in the drive
+    drive.result = geminiResult;
+    await drive.save();
+
+    // Emit socket event to notify all users in the impact board room
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`impact-${driveId}`).emit("impactBoardFinished", {
+        driveId,
+        result: geminiResult,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Impact board finalized successfully!",
+      result: geminiResult,
+    });
+  } catch (err) {
+    console.error("❌ Error finishing impact board:", err);
+    next(err);
+  }
+};
+
+module.exports.getViewSummary = async (req, res, next) => {
+  try {
+    const { driveId } = req.params;
+
+    // Find the drive
+    const drive = await CommunityDrive.findById(driveId)
+      .populate("createdBy", "name email")
+      .populate("participants", "name email");
+
+    if (!drive) {
+      throw new ExpressError("Drive not found.", 404);
+    }
+
+    // Check if drive is completed
+    if (drive.status !== "completed") {
+      throw new ExpressError("This drive is not completed yet.", 400);
+    }
+
+    // Check if impact board has been finalized
+    if (!drive.result) {
+      throw new ExpressError("Impact board summary is not available yet.", 404);
+    }
+
+    res.status(200).json({
+      success: true,
+      drive: {
+        _id: drive._id,
+        heading: drive.heading,
+        description: drive.description,
+        eventDate: drive.eventDate,
+        createdBy: drive.createdBy,
+        participants: drive.participants,
+        result: drive.result,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Error fetching summary:", err);
     next(err);
   }
 };

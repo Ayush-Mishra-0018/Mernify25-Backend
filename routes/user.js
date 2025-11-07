@@ -34,4 +34,9 @@ router.get("/impactBoard/:driveId", wrapForError(UserController.getImpactBoardDa
 
 router.put("/impactBoard/:driveId", wrapForError(UserController.updateImpactBoardData));
 
+router.post("/finishImpactBoard/:driveId", wrapForError(UserController.finishImpactBoard));
+
+// View Summary route (accessible to all)
+router.get("/viewSummary/:driveId", wrapForError(UserController.getViewSummary));
+
 module.exports = router;
