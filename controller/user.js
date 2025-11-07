@@ -51,17 +51,17 @@ module.exports.createCommunityDrive = async (req, res, next) => {
 module.exports.getUserCommunityDrives = async (req, res, next) => {
   try {
     const userId = req.user.id; // from JWT middleware
-    const filter = req.query.filter; 
-    const now = new Date();
+    const filter = req.query.filter; // can be "active", "completed", "cancelled"
 
+    // 🎯 Base query — all drives created by this user
     let query = { createdBy: userId };
 
-    if (filter === "completed") {
-      query.timeTo = { $lt: now };
-    } else if (filter === "active") {
-      query.timeTo = { $gte: now };
+    // 🧩 Apply filter only if provided
+    if (filter && ["active", "completed", "cancelled"].includes(filter)) {
+      query.status = filter;
     }
 
+    // 📦 Fetch drives
     const drives = await CommunityDrive.find(query)
       .sort({ eventDate: -1 });
 
@@ -70,6 +70,7 @@ module.exports.getUserCommunityDrives = async (req, res, next) => {
       count: drives.length,
       drives,
     });
+
   } catch (err) {
     console.error("❌ Error fetching user community drives:", err);
     next(err);
