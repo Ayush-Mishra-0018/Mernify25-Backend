@@ -5,10 +5,12 @@ const ExpressError = require("../utils/ExpressError");
 
 
 const { communityDriveSchemaJoi } = require("../joiSchema");
+const { use } = require("passport");
 
 module.exports.createCommunityDrive = async (req, res, next) => {
   try {
-    const userId = req.user.mongoId; // from JWT middleware
+    const userId = req.user.id;
+    console.log(userId) // from JWT middleware
 
     // ✅ Validate request body with Joi
     const { error, value } = communityDriveSchemaJoi.validate(req.body);
@@ -48,7 +50,7 @@ module.exports.createCommunityDrive = async (req, res, next) => {
 
 module.exports.getUserCommunityDrives = async (req, res, next) => {
   try {
-    const userId = req.user.mongoId; // from JWT middleware
+    const userId = req.user.id; // from JWT middleware
     const filter = req.query.filter; 
     const now = new Date();
 
@@ -78,7 +80,7 @@ module.exports.getUserCommunityDrives = async (req, res, next) => {
 
 module.exports.joinCommunityDrive = async (req, res, next) => {
   try {
-    const userId = req.user.mongoId;
+    const userId = req.user.id;
     const { driveId } = req.params; // from URL param
     const now = new Date();
 
@@ -126,7 +128,7 @@ module.exports.joinCommunityDrive = async (req, res, next) => {
 
 module.exports.cancelCommunityDrive = async (req, res, next) => {
   try {
-    const userId = req.user.mongoId;
+    const userId = req.user.id;
     const { driveId } = req.params;
     const { cancellationReason } = req.body;
     const now = new Date();
@@ -206,7 +208,7 @@ module.exports.getAllCommunityDrives = async (req, res, next) => {
 
 module.exports.leaveCommunityDrive = async (req, res, next) => {
   try {
-    const userId = req.user.mongoId;
+    const userId = req.user.id;
     const { driveId } = req.params;
 
     const drive = await CommunityDrive.findById(driveId);
