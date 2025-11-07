@@ -45,3 +45,37 @@ module.exports.createCommunityDrive = async (req, res, next) => {
     next(err);
   }
 };
+
+module.exports.getUserCommunityDrives = async (req, res, next) => {
+  try {
+    const userId = req.user.mongoId; // from JWT middleware
+    const filter = req.query.filter; 
+    const now = new Date();
+
+    let query = { createdBy: userId };
+
+    // 🕒 Apply filters based on query param
+    if (filter === "completed") {
+      // Drives whose timeTo is in the past
+      query.timeTo = { $lt: now };
+    } else if (filter === "ongoing") {
+      // Drives whose timeFrom <= now <= timeTo
+      query.timeTo = { $gte: now };
+    }
+    // else → no filter (get all drives created by this user)
+
+    // 🧩 Fetch drives and populate createdBy (basic info)
+    const drives = await CommunityDrive.find(query)
+      .populate("createdBy", "name email role")
+      .sort({ eventDate: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: drives.length,
+      drives,
+    });
+  } catch (err) {
+    console.error("❌ Error fetching user community drives:", err);
+    next(err);
+  }
+};

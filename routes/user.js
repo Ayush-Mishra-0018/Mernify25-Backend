@@ -12,7 +12,6 @@ router.post(
   wrapForError(UserController.createCommunityDrive)
 );
 
-// router.get("/myDrive",) // past current upcoming drives
-// router.get("")
+router.get("/myDrive", wrapForError(UserController.getUserCommunityDrives));
 
 module.exports = router;
