@@ -38,7 +38,7 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
   exposedHeaders: ["x-updated-token"]
 }));
-
+console.log("Mongo URI:", JSON.stringify(process.env.MONGODB_URI));
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
