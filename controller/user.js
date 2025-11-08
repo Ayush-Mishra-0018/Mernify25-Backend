@@ -667,6 +667,7 @@ module.exports.finishImpactBoard = async (req, res, next) => {
   try {
     const { driveId } = req.params;
     const userId = req.user.id;
+    const { result } = req.body; // Get AI-generated result from frontend
 
     // Find the drive
     const drive = await CommunityDrive.findById(driveId);
@@ -686,49 +687,13 @@ module.exports.finishImpactBoard = async (req, res, next) => {
       throw new ExpressError("Impact board already finalized.", 400);
     }
 
-    // Get the summary from impactData
-    const summaryText = drive.impactData?.summary || "";
-    
-    if (!summaryText.trim()) {
-      throw new ExpressError("Cannot finalize an empty impact summary.", 400);
+    // Validate result from frontend
+    if (!result || !result.trim()) {
+      throw new ExpressError("Cannot finalize without a summary result.", 400);
     }
-
-    // Call Gemini API to generate meaningful summary
-    const axios = require('axios');
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-    if (!GEMINI_API_KEY) {
-      throw new ExpressError("Gemini API key not configured.", 500);
-    }
-
-    const systemPrompt = `You are a summarizer for environmental and community initiatives. 
-    
-    Below is a collaborative impact summary written by multiple participants of a community initiative titled "${drive.heading}":
-    
-    "${summaryText}"
-    
-    Make it concise, inspiring, and professional. Ignore any gibberish remarks. Keep it under 100 words.`;
-
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        contents: [
-          {
-            parts: [{ text: systemPrompt }],
-          },
-        ],
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const geminiResult = response.data.candidates[0].content.parts[0].text.replace(/\*\*/g, "");
 
     // Store the result in the drive
-    drive.result = geminiResult;
+    drive.result = result;
     await drive.save();
 
     // Emit socket event to notify all users in the impact board room
@@ -736,14 +701,14 @@ module.exports.finishImpactBoard = async (req, res, next) => {
     if (io) {
       io.to(`impact-${driveId}`).emit("impactBoardFinished", {
         driveId,
-        result: geminiResult,
+        result: result,
       });
     }
 
     res.status(200).json({
       success: true,
       message: "Impact board finalized successfully!",
-      result: geminiResult,
+      result: result,
     });
   } catch (err) {
     console.error("❌ Error finishing impact board:", err);
