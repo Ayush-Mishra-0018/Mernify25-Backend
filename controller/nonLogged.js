@@ -1,5 +1,5 @@
-const CommunityDrive = require("../models/CommunityDrive");
-const User = require("../models/User");
+const CommunityDrive = require("../models/communityDrive");
+const User = require("../models/user");
 const ExpressError = require("../utils/ExpressError");
 
 

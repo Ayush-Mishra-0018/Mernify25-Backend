@@ -1,6 +1,6 @@
-const CommunityDrive = require("../models/CommunityDrive");
+const CommunityDrive = require("../models/communityDrive");
 const CommunityChat = require("../models/communityDriveChat");
-const User = require("../models/User");
+const User = require("../models/user");
 const ExpressError = require("../utils/ExpressError");
 let redis = require("../utils/redis");
 
