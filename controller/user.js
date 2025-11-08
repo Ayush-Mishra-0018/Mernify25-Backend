@@ -544,78 +544,87 @@ module.exports.sendDriveMessage = async (req, res, next) => {
 // ============================================
 // Impact Board Methods
 // ============================================
-
 module.exports.getImpactBoardData = async (req, res, next) => {
   try {
     const { driveId } = req.params;
     const userId = req.user.id;
 
-    // Find the drive
+    console.log(`📋 Fetching impact board data for drive ${driveId}`);
+
+    // 1️⃣ Try Redis first
+    const cached = await redis.get(`drive:${driveId}:impact`);
+    if (cached) {
+      console.log(`✅ [CACHE HIT] Impact data from Redis for drive ${driveId}`);
+      const cachedData = JSON.parse(cached);
+      return res.status(200).json({
+        success: true,
+        drive: cachedData,
+        cached: true,
+      });
+    }
+
+    // 2️⃣ If not in Redis → Fetch from MongoDB
+    console.log(`⚠️ [CACHE MISS] Fetching from MongoDB for drive ${driveId}`);
     const drive = await CommunityDrive.findById(driveId)
       .populate("createdBy", "name email")
       .populate("participants", "name email");
 
-    if (!drive) {
-      throw new ExpressError("Drive not found.", 404);
-    }
+    if (!drive) throw new ExpressError("Drive not found.", 404);
 
-    // Check if user is organizer or participant
     const isOrganizer = drive.createdBy._id.toString() === userId;
     const isParticipant = drive.participants.some(
       (p) => p._id.toString() === userId
     );
-
-    if (!isOrganizer && !isParticipant) {
+    if (!isOrganizer && !isParticipant)
       throw new ExpressError("You are not authorized to access this impact board.", 403);
-    }
 
-    // Return drive data with impact board info
+    const driveData = {
+      _id: drive._id,
+      heading: drive.heading,
+      description: drive.description,
+      eventDate: drive.eventDate,
+      status: drive.status,
+      createdBy: drive.createdBy,
+      participants: drive.participants,
+      impactData: drive.impactData || { summary: "" },
+      isFinalized: !!drive.result,
+    };
+
+    // 3️⃣ Store in Redis
+    await redis.set(
+      `drive:${driveId}:impact`,
+      JSON.stringify(driveData),
+      "EX",
+      60 * 10 // cache for 10 mins
+    );
+    console.log(`🧠 [CACHE SET] Cached impact board data for drive ${driveId}`);
+
     res.status(200).json({
       success: true,
-      drive: {
-        _id: drive._id,
-        heading: drive.heading,
-        description: drive.description,
-        eventDate: drive.eventDate,
-        status: drive.status,
-        createdBy: drive.createdBy,
-        participants: drive.participants,
-        impactData: drive.impactData || {
-          summary: "",
-        },
-        isFinalized: !!drive.result, // Whether impact board has been finalized
-      },
+      drive: driveData,
     });
   } catch (err) {
     console.error("❌ Error fetching impact board data:", err);
     next(err);
   }
 };
-
 module.exports.updateImpactBoardData = async (req, res, next) => {
   try {
     const { driveId } = req.params;
     const userId = req.user.id;
     const { field, value, cursorPosition } = req.body;
 
-    // Find the drive
+    console.log(`✏️ Updating impact board for drive ${driveId}: ${field}=${value}`);
+
     const drive = await CommunityDrive.findById(driveId);
+    if (!drive) throw new ExpressError("Drive not found.", 404);
 
-    if (!drive) {
-      throw new ExpressError("Drive not found.", 404);
-    }
-
-    // Check if user is organizer or participant
     const isOrganizer = drive.createdBy.toString() === userId;
-    const isParticipant = drive.participants.some(
-      (p) => p.toString() === userId
-    );
-
-    if (!isOrganizer && !isParticipant) {
+    const isParticipant = drive.participants.some((p) => p.toString() === userId);
+    if (!isOrganizer && !isParticipant)
       throw new ExpressError("You are not authorized to edit this impact board.", 403);
-    }
 
-    // Update the specific field
+    // Update impact data
     if (!drive.impactData) {
       drive.impactData = {
         wasteCollected: "",
@@ -628,20 +637,44 @@ module.exports.updateImpactBoardData = async (req, res, next) => {
     }
 
     if (field === "photos") {
-      // Handle photo array
       drive.impactData.photos = value;
     } else {
-      // Update text field
       drive.impactData[field] = value;
     }
 
     await drive.save();
 
-    // Get user info for socket broadcast
-    const user = await User.findById(userId);
+    // 🧠 Update Redis cache
+    const updatedData = {
+      _id: drive._id,
+      heading: drive.heading,
+      description: drive.description,
+      eventDate: drive.eventDate,
+      status: drive.status,
+      createdBy: drive.createdBy,
+      participants: drive.participants,
+      impactData: drive.impactData,
+      isFinalized: !!drive.result,
+    };
 
-    // Emit socket event to all users in the impact board room
-    const io = req.app.get('io');
+    await redis.set(
+      `drive:${driveId}:impact`,
+      JSON.stringify(updatedData),
+      "EX",
+      60 * 10
+    );
+    console.log(`🧩 [CACHE UPDATE] Updated Redis cache for drive ${driveId}`);
+
+    // 📡 Publish for cross-server updates
+    await redis.publish(
+      "impactBoardUpdates",
+      JSON.stringify({ driveId, field, value, userId })
+    );
+    console.log(`📡 [REDIS PUBLISH] Published update for drive ${driveId}`);
+
+    // 📢 Socket broadcast
+    const user = await User.findById(userId);
+    const io = req.app.get("io");
     if (io) {
       io.to(`impact-${driveId}`).emit("impactBoardUpdate", {
         driveId,
@@ -662,7 +695,6 @@ module.exports.updateImpactBoardData = async (req, res, next) => {
     next(err);
   }
 };
-
 module.exports.finishImpactBoard = async (req, res, next) => {
   try {
     const { driveId } = req.params;
@@ -687,10 +719,46 @@ module.exports.finishImpactBoard = async (req, res, next) => {
       throw new ExpressError("Impact board already finalized.", 400);
     }
 
-    // Validate result from frontend
-    if (!result || !result.trim()) {
-      throw new ExpressError("Cannot finalize without a summary result.", 400);
+    // Get the summary from impactData
+    const summaryText = drive.impactData?.summary || "";
+    
+    if (!summaryText.trim()) {
+      throw new ExpressError("Cannot finalize an empty impact summary.", 400);
     }
+
+    // Call Gemini API to generate meaningful summary
+    const axios = require('axios');
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+    if (!GEMINI_API_KEY) {
+      throw new ExpressError("Gemini API key not configured.", 500);
+    }
+
+    const systemPrompt = `You are a summarizer for environmental and community initiatives. 
+    
+    Below is a collaborative impact summary written by multiple participants of a community initiative titled "${drive.heading}":
+    
+    "${summaryText}"
+    
+    Make it concise, inspiring, and professional. Ignore any gibberish remarks. Keep it under 100 words.`;
+
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        contents: [
+          {
+            parts: [{ text: systemPrompt }],
+          },
+        ],
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const geminiResult = response.data.candidates[0].content.parts[0].text.replace(/\*\*/g, "");
 
     // Store the result in the drive
     drive.result = result;
