@@ -41,13 +41,11 @@ node index.js
   - starts `server.listen(PORT)`
 - `controller/` — business logic and handlers
   - `user.js` — community drive flows and many emitted socket events (`driveCreated`, `driveUpdated`, `driveCancelled`)
-  - `admin.js` — admin operations
-  - `ngo.js` — NGO-specific logic
-  - `auth.js` / `nonLogged.js` — login, callbacks, public endpoints
+  - `auth.js`
 - `routes/` — Express routers that map endpoints to controllers
-  - `user.js`, `auth.js`, `admin.js`, `ngo.js`, `notLogged.js`
+  - `user.js`, `auth.js`
 - `models/` — Mongoose models (DB schema)
-  - `communityDrive.js`, `user.js`, `communityDriveChat.js`, `collectionInitiative.js`, `aiChat.js`
+  - `communityDrive.js`, `user.js`, `communityDriveChat.js`, `collectionInitiative.js`
 - `auth/` — passport configuration and strategies (`passport.js`)
 - `utils/` — small utilities and middleware
   - `ExpressError.js`, `catchAsync.js`, `redis.js` (ioredis client), validation helpers
