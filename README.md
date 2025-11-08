@@ -15,7 +15,6 @@ This document covers only the backend of EcoSynergy: server bootstrapping, APIs,
   - Enforce auth/roles (JWT + passport)
   - Validate inputs (Joi)
   - Use Redis for pub/sub and caching where applicable
-  - Handle file uploads (Cloudinary + multer)
 
 
 ## Live demo (deployed on Railway) 🚀
@@ -50,7 +49,6 @@ node index.js
 - `models/` — Mongoose models (DB schema)
   - `communityDrive.js`, `user.js`, `communityDriveChat.js`, `collectionInitiative.js`, `aiChat.js`
 - `auth/` — passport configuration and strategies (`passport.js`)
-- `cloudinary/` — Cloudinary config and `multer` storage helpers for file uploads
 - `utils/` — small utilities and middleware
   - `ExpressError.js`, `catchAsync.js`, `redis.js` (ioredis client), validation helpers
 - `joiSchema.js` — Joi validation schemas used by controllers
@@ -76,14 +74,14 @@ node index.js
   - This helps make chat/discussion and impact-board updates resilient and quicker to serve.
 
 - File uploads & media
-  - Cloudinary is used for storing images/media. Look at `cloudinary/index.js` and `cloudinary/uploadMiddleware.js` for configuration and `multer-storage-cloudinary` wiring.
+  
 
 - Scheduled jobs
   - `node-cron` is available for scheduled background tasks (e.g., periodic data cleanup or async summarization tasks).
 
 
 ## Scripts & dependencies 🧩
-- The backend `package.json` includes production dependencies used by the app (Express, Mongoose, Socket.IO, ioredis, Passport, Joi, Cloudinary, multer, etc.).
+- The backend `package.json` includes production dependencies used by the app (Express, Mongoose, Socket.IO, ioredis, Passport, Joi, multer, etc.).
 - Note: the repo's `package.json` does not define a `dev` script by default. Use `node index.js` to start, or add your own npm script such as `dev: nodemon index.js`.
 
 
@@ -95,12 +93,7 @@ PORT=8080
 MONGO_URI=mongodb+srv://<user>:<pass>@cluster0.mongodb.net/ecosynergy
 JWT_SECRET=your_jwt_secret_here
 FRONTEND_URL=http://localhost:5173
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret
 REDIS_URL=redis://localhost:6379
-TWILIO_ACCOUNT_SID=your_twilio_sid
-TWILIO_AUTH_TOKEN=your_twilio_token
 ```
 
 Keep secrets out of source control and use provider-managed secrets for production.
@@ -135,7 +128,6 @@ Manual verification checklist for backend:
 
 ## Deployment & production notes 🚀
 - For multi-instance deployments, configure Socket.IO to use the Redis adapter so events broadcast across instances (see `socket.io-redis` adapter docs).
-- Use managed Redis (Upstash, Redis Cloud, AWS Elasticache) and managed MongoDB (Atlas) in production.
 - Ensure the host supports WebSockets or use a provider that supports sticky sessions / a Redis adapter.
 - Use environment variables from the provider dashboard and keep secrets secure.
 
@@ -147,5 +139,4 @@ Manual verification checklist for backend:
 - Models: `models/` folder (start with `communityDrive.js` and `user.js`)
 - Redis client: `utils/redis.js`
 - Auth: `auth/passport.js`
-- Cloudinary uploads: `cloudinary/index.js`, `cloudinary/uploadMiddleware.js`
 
